@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 The py-lmdb authors, all rights reserved.
+ * Copyright 2013-2025 The py-lmdb authors, all rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted only as authorized by the OpenLDAP
@@ -112,49 +112,11 @@ typedef struct IterObject IterObject;
 typedef struct TransObject TransObject;
 
 
-/* ------------------------ */
-/* Python 3.x Compatibility */
-/* ------------------------ */
-
-#if PY_MAJOR_VERSION >= 3
-
 #   define MOD_RETURN(mod) return mod;
 #   define MODINIT_NAME PyInit_cpython
 
 #   define MAKE_ID(id) PyCapsule_New((void *) (1 + (id)), NULL, NULL)
 #   define READ_ID(obj) (((int) (long) PyCapsule_GetPointer(obj, NULL)) - 1)
-
-#else
-
-#   define MOD_RETURN(mod) return
-#   define MODINIT_NAME initcpython
-
-#   define MAKE_ID(id) PyInt_FromLong((long) id)
-#   define READ_ID(obj) PyInt_AS_LONG(obj)
-
-#   define PyUnicode_InternFromString PyString_InternFromString
-#   define PyBytes_AS_STRING PyString_AS_STRING
-#   define PyBytes_GET_SIZE PyString_GET_SIZE
-#   define PyBytes_CheckExact PyString_CheckExact
-#   define PyBytes_FromStringAndSize PyString_FromStringAndSize
-#   define _PyBytes_Resize _PyString_Resize
-#   define PyMemoryView_FromMemory(x, y, z) PyBuffer_FromMemory(x, y)
-
-#   ifndef PyBUF_READ
-#       define PyBUF_READ 0
-#   endif
-
-/* Python 2.5 */
-#   ifndef Py_TYPE
-#       define Py_TYPE(ob) (((PyObject*)(ob))->ob_type)
-#   endif
-
-#   ifndef PyVarObject_HEAD_INIT
-#       define PyVarObject_HEAD_INIT(x, y) \
-            PyObject_HEAD_INIT(x) y,
-#   endif
-
-#endif
 
 struct list_head {
     struct lmdb_object *prev;
@@ -204,8 +166,13 @@ struct EnvObject {
     DbObject *main_db;
     /**  1 if env opened read-only; transactions must always be read-only. */
     int readonly;
-    /** Spare read-only transaction . */
+    /** Spare read-only transaction. */
     struct MDB_txn *spare_txn;
+    /** Maximum number of spare transactions.  In cpython only 0 and 1 are supported.
+     *  If process will be forked, this must be set to 0. */
+    int max_spare_txns;
+    /** Process ID of the process this Environment was opened in. */
+    pid_t pid;
 };
 
 /** TransObject.flags bitfield values. */
@@ -583,9 +550,21 @@ val_from_buffer(MDB_val *val, PyObject *buf)
         type_error("Won't implicitly convert Unicode to bytes; use .encode()");
         return -1;
     }
+#if PY_VERSION_HEX < 0x030d0000
     return PyObject_AsReadBuffer(buf,
         (const void **) &val->mv_data,
         (Py_ssize_t *) &val->mv_size);
+#else
+    Py_buffer view;
+    int ret;
+    ret = PyObject_GetBuffer(buf, &view, PyBUF_SIMPLE);
+    if(ret == 0) {
+        val->mv_data = view.buf;
+        val->mv_size = view.len;
+        PyBuffer_Release(&view);
+    }
+    return ret;
+#endif
 }
 
 /* ------------------- */
@@ -649,11 +628,7 @@ parse_ulong(PyObject *obj, uint64_t *l, PyObject *max)
         PyErr_Format(PyExc_OverflowError, "Integer argument exceeds limit.");
         return -1;
     }
-#if PY_MAJOR_VERSION >= 3
     *l = PyLong_AsUnsignedLongLongMask(obj);
-#else
-    *l = PyInt_AsUnsignedLongLongMask(obj);
-#endif
     return 0;
 }
 
@@ -1192,7 +1167,7 @@ env_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         int max_dbs;
         int max_spare_txns;
         int lock;
-    } arg = {NULL, 10485760, 1, 0, 1, 1, 0, 0755, 1, 1, 0, 1, 126, 0, 1, 1};
+    } arg = {NULL, 10485760, 1, 0, 1, 1, 0, 0755, 1, 1, 0, 1, 126, 0, 0, 1};
 
     static const struct argspec argspec[] = {
         {"path", ARG_OBJ, OFFSET(env_new, path)},
@@ -1210,7 +1185,7 @@ env_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         {"max_readers", ARG_INT, OFFSET(env_new, max_readers)},
         {"max_dbs", ARG_INT, OFFSET(env_new, max_dbs)},
         {"max_spare_txns", ARG_INT, OFFSET(env_new, max_spare_txns)},
-        {"lock", ARG_BOOL, OFFSET(env_new, lock)}
+        {"lock", ARG_BOOL, OFFSET(env_new, lock)},
     };
 
     PyObject *fspath_obj = NULL;
@@ -1238,6 +1213,8 @@ env_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     self->main_db = NULL;
     self->env = NULL;
     self->spare_txn = NULL;
+    self->max_spare_txns = arg.max_spare_txns;
+    self->pid = getpid();
 
     if((rc = mdb_env_create(&self->env))) {
         err_set("mdb_env_create", rc);
@@ -2124,7 +2101,7 @@ cursor_get_multi(CursorObject *self, PyObject *args, PyObject *kwds)
     };
 
     size_t buffer_pos = 0, buffer_size = 8;
-    size_t key_size, val_size, item_size = 0;
+    size_t key_size = 0, val_size, item_size = 0;
     char *buffer = NULL;
 
     static PyObject *cache = NULL;
@@ -3243,16 +3220,21 @@ trans_dealloc(TransObject *self)
         PyObject_ClearWeakRefs((PyObject *) self);
     }
 
-    if(txn && self->env && !self->env->spare_txn &&
-      (self->flags & TRANS_RDONLY)) {
-        MDEBUG("caching trans")
-        mdb_txn_reset(txn);
-        self->env->spare_txn = txn;
-        self->txn = NULL;
+    if(self->env && self->env->pid == getpid()) {
+        if(txn && self->env && !self->env->spare_txn && 
+                self->env->max_spare_txns && (self->flags & TRANS_RDONLY)) {
+            MDEBUG("caching trans")
+            mdb_txn_reset(txn);
+            self->env->spare_txn = txn;
+            self->txn = NULL;
+        }
+        MDEBUG("deleting trans")
+        trans_clear(self);
+    }
+    else {
+       MDEBUG("In forked process, not deleting trans");
     }
 
-    MDEBUG("deleting trans")
-    trans_clear(self);
     PyObject_Del(self);
 }
 
@@ -3797,11 +3779,7 @@ static PyTypeObject PyTransaction_Type = {
 static int
 append_string(PyObject *list, const char *s)
 {
-#if PY_MAJOR_VERSION >= 3
     PyObject *o = PyUnicode_FromString(s);
-#else
-    PyObject *o = PyBytes_FromStringAndSize(s, strlen(s));
-#endif
 
     if(! o) {
         return -1;
@@ -3862,7 +3840,6 @@ static struct PyMethodDef module_methods[] = {
     {0, 0, 0, 0}
 };
 
-#if PY_MAJOR_VERSION >= 3
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
     "cpython",
@@ -3874,7 +3851,6 @@ static struct PyModuleDef moduledef = {
     NULL,
     NULL
 };
-#endif
 
 /**
  * Initialize and publish the LMDB built-in types.
@@ -3985,11 +3961,7 @@ PyMODINIT_FUNC
 MODINIT_NAME(void)
 {
     PyObject *__all__;
-#if PY_MAJOR_VERSION >= 3
     PyObject *mod = PyModule_Create(&moduledef);
-#else
-    PyObject *mod = Py_InitModule3("cpython", module_methods, "");
-#endif
     if(! mod) {
         MOD_RETURN(NULL);
     }
