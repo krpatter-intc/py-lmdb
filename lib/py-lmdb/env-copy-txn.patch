@@ -14,7 +14,7 @@ index ff03c22..3d6f4cc 100644
  	 */
  int  mdb_env_copy2(MDB_env *env, const char *path, unsigned int flags);
 +int  mdb_env_copy3(MDB_env *env, const char *path, unsigned int flags, MDB_txn *txn);
- 
+
  	/** @brief Copy an LMDB environment to the specified file descriptor,
  	 *	with options.
 @@ -701,9 +706,13 @@ int  mdb_env_copy2(MDB_env *env, const char *path, unsigned int flags);
@@ -28,15 +28,32 @@ index ff03c22..3d6f4cc 100644
  	 */
  int  mdb_env_copyfd2(MDB_env *env, mdb_filehandle_t fd, unsigned int flags);
 +int  mdb_env_copyfd3(MDB_env *env, mdb_filehandle_t fd, unsigned int flags, MDB_txn *txn);
- 
+
  	/** @brief Return statistics about the LMDB environment.
  	 *
 diff --git a/libraries/liblmdb/mdb.c b/libraries/liblmdb/mdb.c
 index deb6779..b5d152c 100644
 --- a/libraries/liblmdb/mdb.c
 +++ b/libraries/liblmdb/mdb.c
-@@ -9366,12 +9366,12 @@ done:
- 
+@@ -4291,6 +4291,7 @@ mdb_fopen(const MDB_env *env, MDB_name *fname,
+ 	 */
+
+ #ifdef _WIN32
++    DWORD actual;
+ 	acc = GENERIC_READ|GENERIC_WRITE;
+ 	share = FILE_SHARE_READ|FILE_SHARE_WRITE;
+ 	disp = OPEN_ALWAYS;
+@@ -4314,6 +4315,8 @@ mdb_fopen(const MDB_env *env, MDB_name *fname,
+ 	default: break;	/* silence gcc -Wswitch (not all enum values handled) */
+ 	}
+ 	fd = CreateFileW(fname->mn_val, acc, share, NULL, disp, attrs, NULL);
++	if (!DeviceIoControl(fd, FSCTL_SET_SPARSE, NULL, 0,
++		NULL, 0, &actual, NULL))
+ #else
+ 	fd = open(fname->mn_val, which & MDB_O_MASK, mode);
+ #endif
+@@ -9366,12 +9369,12 @@ done:
+
  	/** Copy environment with compaction. */
  static int ESECT
 -mdb_env_copyfd1(MDB_env *env, HANDLE fd)
@@ -50,10 +67,10 @@ index deb6779..b5d152c 100644
  	pthread_t thr;
  	pgno_t root, new_root;
  	int rc = MDB_SUCCESS;
-@@ -9417,9 +9417,11 @@ mdb_env_copyfd1(MDB_env *env, HANDLE fd)
+@@ -9417,9 +9420,11 @@ mdb_env_copyfd1(MDB_env *env, HANDLE fd)
  	if (rc)
  		goto done;
- 
+
 -	rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
 -	if (rc)
 -		goto finish;
@@ -62,22 +79,22 @@ index deb6779..b5d152c 100644
 +		if (rc)
 +			goto finish;
 +	}
- 
+
  	mp = (MDB_page *)my.mc_wbuf[0];
  	memset(mp, 0, NUM_METAS * env->me_psize);
-@@ -9479,7 +9481,8 @@ finish:
+@@ -9479,7 +9484,8 @@ finish:
  		my.mc_error = rc;
  	mdb_env_cthr_toggle(&my, 1 | MDB_EOF);
  	rc = THREAD_FINISH(thr);
 -	mdb_txn_abort(txn);
 +	if (!orig_txn)
 +		mdb_txn_abort(txn);
- 
+
  done:
  #ifdef _WIN32
-@@ -9596,12 +9599,22 @@ leave:
+@@ -9596,12 +9602,22 @@ leave:
  }
- 
+
  int ESECT
 -mdb_env_copyfd2(MDB_env *env, HANDLE fd, unsigned int flags)
 +mdb_env_copyfd3(MDB_env *env, HANDLE fd, unsigned int flags, MDB_txn *txn)
@@ -98,10 +115,10 @@ index deb6779..b5d152c 100644
 +{
 +	return mdb_env_copyfd3(env, fd, flags, NULL);
  }
- 
+
  int ESECT
-@@ -9612,6 +9625,12 @@ mdb_env_copyfd(MDB_env *env, HANDLE fd)
- 
+@@ -9612,6 +9628,12 @@ mdb_env_copyfd(MDB_env *env, HANDLE fd)
+
  int ESECT
  mdb_env_copy2(MDB_env *env, const char *path, unsigned int flags)
 +{
@@ -113,7 +130,7 @@ index deb6779..b5d152c 100644
  {
  	int rc;
  	MDB_name fname;
-@@ -9623,7 +9642,7 @@ mdb_env_copy2(MDB_env *env, const char *path, unsigned int flags)
+@@ -9623,7 +9645,7 @@ mdb_env_copy2(MDB_env *env, const char *path, unsigned int flags)
  		mdb_fname_destroy(fname);
  	}
  	if (rc == MDB_SUCCESS) {
