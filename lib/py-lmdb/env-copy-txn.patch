@@ -50,11 +50,7 @@ index deb6779..b5d152c 100644
  	pthread_t thr;
  	pgno_t root, new_root;
  	int rc = MDB_SUCCESS;
-<<<<<<< HEAD
-@@ -9383,9 +9386,11 @@ mdb_env_copyfd1(MDB_env *env, HANDLE fd)
-=======
 @@ -9417,9 +9417,11 @@ mdb_env_copyfd1(MDB_env *env, HANDLE fd)
->>>>>>> master
  	if (rc)
  		goto done;
 
@@ -69,11 +65,7 @@ index deb6779..b5d152c 100644
 
  	mp = (MDB_page *)my.mc_wbuf[0];
  	memset(mp, 0, NUM_METAS * env->me_psize);
-<<<<<<< HEAD
-@@ -9445,7 +9450,8 @@ finish:
-=======
 @@ -9479,7 +9481,8 @@ finish:
->>>>>>> master
  		my.mc_error = rc;
  	mdb_env_cthr_toggle(&my, 1 | MDB_EOF);
  	rc = THREAD_FINISH(thr);
@@ -83,11 +75,7 @@ index deb6779..b5d152c 100644
 
  done:
  #ifdef _WIN32
-<<<<<<< HEAD
-@@ -9562,12 +9568,22 @@ leave:
-=======
 @@ -9596,12 +9599,22 @@ leave:
->>>>>>> master
  }
 
  int ESECT
