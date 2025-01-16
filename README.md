@@ -1,3 +1,11 @@
+# HOWTO merge with upstream
+
+- apply the new patch to the files
+- modify the files to have the changes from the original
+- build a new patch from the modified files vs. what is checked in to master
+
+# Original
+
 This is a universal Python binding for the LMDB ‘Lightning’ Database.
 
 See [the documentation](https://lmdb.readthedocs.io) for more information.
@@ -7,8 +15,8 @@ See [the documentation](https://lmdb.readthedocs.io) for more information.
 
 # Python Version Support Statement
 
-This project has been around for a while.  Previously, it supported all the 
-way back to before Python 2.5.  Currently, py-lmdb supports Python >= 3.5 
+This project has been around for a while.  Previously, it supported all the
+way back to before Python 2.5.  Currently, py-lmdb supports Python >= 3.5
 and pypy.
 
 The last version of py-lmdb that supported Python 2.7 was 1.4.1.
