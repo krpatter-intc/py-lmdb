@@ -1,5 +1,5 @@
 diff --git a/libraries/liblmdb/lmdb.h b/libraries/liblmdb/lmdb.h
-index 69aa2751a2..ff7f77a10d 100644
+index ff03c22..3d6f4cc 100644
 --- a/libraries/liblmdb/lmdb.h
 +++ b/libraries/liblmdb/lmdb.h
 @@ -682,9 +682,14 @@ int  mdb_env_copyfd(MDB_env *env, mdb_filehandle_t fd);
@@ -32,27 +32,10 @@ index 69aa2751a2..ff7f77a10d 100644
  	/** @brief Return statistics about the LMDB environment.
  	 *
 diff --git a/libraries/liblmdb/mdb.c b/libraries/liblmdb/mdb.c
-
+index deb6779..b5d152c 100644
 --- a/libraries/liblmdb/mdb.c
 +++ b/libraries/liblmdb/mdb.c
-@@ -4265,6 +4265,7 @@ mdb_fopen(const MDB_env *env, MDB_name *fname,
- 	 */
-
- #ifdef _WIN32
-+    DWORD actual;
- 	acc = GENERIC_READ|GENERIC_WRITE;
- 	share = FILE_SHARE_READ|FILE_SHARE_WRITE;
- 	disp = OPEN_ALWAYS;
-@@ -4288,6 +4289,8 @@ mdb_fopen(const MDB_env *env, MDB_name *fname,
- 	default: break;	/* silence gcc -Wswitch (not all enum values handled) */
- 	}
- 	fd = CreateFileW(fname->mn_val, acc, share, NULL, disp, attrs, NULL);
-+	if (!DeviceIoControl(fd, FSCTL_SET_SPARSE, NULL, 0,
-+		NULL, 0, &actual, NULL))
- #else
- 	fd = open(fname->mn_val, which & MDB_O_MASK, mode);
- #endif
-@@ -9332,12 +9335,12 @@ done:
+@@ -9366,12 +9366,12 @@ done:
 
  	/** Copy environment with compaction. */
  static int ESECT
@@ -67,7 +50,11 @@ diff --git a/libraries/liblmdb/mdb.c b/libraries/liblmdb/mdb.c
  	pthread_t thr;
  	pgno_t root, new_root;
  	int rc = MDB_SUCCESS;
+<<<<<<< HEAD
 @@ -9383,9 +9386,11 @@ mdb_env_copyfd1(MDB_env *env, HANDLE fd)
+=======
+@@ -9417,9 +9417,11 @@ mdb_env_copyfd1(MDB_env *env, HANDLE fd)
+>>>>>>> master
  	if (rc)
  		goto done;
 
@@ -82,7 +69,11 @@ diff --git a/libraries/liblmdb/mdb.c b/libraries/liblmdb/mdb.c
 
  	mp = (MDB_page *)my.mc_wbuf[0];
  	memset(mp, 0, NUM_METAS * env->me_psize);
+<<<<<<< HEAD
 @@ -9445,7 +9450,8 @@ finish:
+=======
+@@ -9479,7 +9481,8 @@ finish:
+>>>>>>> master
  		my.mc_error = rc;
  	mdb_env_cthr_toggle(&my, 1 | MDB_EOF);
  	rc = THREAD_FINISH(thr);
@@ -92,7 +83,11 @@ diff --git a/libraries/liblmdb/mdb.c b/libraries/liblmdb/mdb.c
 
  done:
  #ifdef _WIN32
+<<<<<<< HEAD
 @@ -9562,12 +9568,22 @@ leave:
+=======
+@@ -9596,12 +9599,22 @@ leave:
+>>>>>>> master
  }
 
  int ESECT
@@ -117,7 +112,7 @@ diff --git a/libraries/liblmdb/mdb.c b/libraries/liblmdb/mdb.c
  }
 
  int ESECT
-@@ -9578,6 +9594,12 @@ mdb_env_copyfd(MDB_env *env, HANDLE fd)
+@@ -9612,6 +9625,12 @@ mdb_env_copyfd(MDB_env *env, HANDLE fd)
 
  int ESECT
  mdb_env_copy2(MDB_env *env, const char *path, unsigned int flags)
@@ -130,7 +125,7 @@ diff --git a/libraries/liblmdb/mdb.c b/libraries/liblmdb/mdb.c
  {
  	int rc;
  	MDB_name fname;
-@@ -9589,7 +9611,7 @@ mdb_env_copy2(MDB_env *env, const char *path, unsigned int flags)
+@@ -9623,7 +9642,7 @@ mdb_env_copy2(MDB_env *env, const char *path, unsigned int flags)
  		mdb_fname_destroy(fname);
  	}
  	if (rc == MDB_SUCCESS) {

@@ -1,3 +1,38 @@
+2025-01-05 1.6.2
+* CI-only fix.
+
+2025-01-05 1.6.1
+* CI-only fix.
+
+2025-01-05 1.6.0
+* Support for Python 3.13.  Contributed by Miro Hrončok and Adam Williamson.
+
+* CI:  Publish 3.13 binaries and Linux aarch64 wheels for multiple versions.
+
+2024-07-01 1.5.1
+* CI-only fix.
+
+2024-06-30 1.5.0
+* Add Python 3.12 binaries.
+
+* Update bundled LMDB to 0.9.31.
+
+* Remove Python 2.7 support.
+
+2022-04-04 v1.4.1
+* Update CI to build manylinux binaries.
+
+2022-12-06 v1.4.0
+* Add Python 3.11 support.
+
+2021-12-30 v1.3.0
+* Add aarch64 architecture builds.  Contributed by odidev.
+
+* Add Python 3.10 support.
+
+* Fix crash relating to caching of transactions.  The 'max_spare_txns'
+  parameter to Environment/open is currently ignored in cpython.
+
 2021-04-19 v1.2.1
 * Resolve CI bug where non-Linux wheels were not being published to PyPI.
 
