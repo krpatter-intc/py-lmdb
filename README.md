@@ -1,8 +1,9 @@
-# HOWTO merge with upstream
+# HOWTO merge from upstream
 
 - apply the new patch to the files
 - modify the files to have the changes from the original
 - build a new patch from the modified files vs. what is checked in to master
+- try to do this in the win32-sparse-patch branch and THEN pull it in to this branch for the final lmdb_m package
 
 # Original
 
